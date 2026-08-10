@@ -99,9 +99,14 @@ class _AnimationDetailScreenState extends State<AnimationDetailScreen> {
 
   /// Collects every observable property on the bound view model, logs each
   /// value change, and exposes it as a control in the Controls tab.
-  void _bindProperties(rive.ViewModelInstance instance) {
+  ///
+  /// Nested view models are walked recursively — the UI Starter Kit's root view
+  /// model holds nothing but nested components, so a flat pass would find no
+  /// properties at all. Leaves are resolved from [root] by their full
+  /// slash-separated path, which is also how they are labelled.
+  void _bindProperties(rive.ViewModelInstance root) {
     void listen<T>(
-      String name,
+      String path,
       rive.ViewModelInstanceObservableValue<T>? property,
       String Function(T value) format,
       BoundProperty Function() bind,
@@ -109,46 +114,57 @@ class _AnimationDetailScreenState extends State<AnimationDetailScreen> {
       if (property == null) return;
       void listener(T value) => _add(
         LogKind.dataBind,
-        name,
+        path,
         details: format(value),
-        coalesceKey: 'property:$name',
+        coalesceKey: 'property:$path',
       );
       property.addListener(listener);
       _propertyListenerRemovers.add(() => property.removeListener(listener));
       _boundProperties.add(bind());
     }
 
-    for (final property in instance.properties) {
-      final name = property.name;
-      switch (property.type) {
-        case rive.DataType.number:
-          final p = instance.number(name);
-          listen(name, p, (v) => v.toStringAsFixed(2), () => BoundNumber(name, p!));
-        case rive.DataType.boolean:
-          final p = instance.boolean(name);
-          listen(name, p, (v) => '$v', () => BoundBoolean(name, p!));
-        case rive.DataType.string:
-          final p = instance.string(name);
-          listen(name, p, (v) => '"$v"', () => BoundString(name, p!));
-        case rive.DataType.enumType:
-          final p = instance.enumerator(name);
-          listen(name, p, (v) => v, () => BoundEnum(name, p!));
-        case rive.DataType.color:
-          final p = instance.color(name);
-          listen(
-            name,
-            p,
-            (v) => '#${v.toARGB32().toRadixString(16).padLeft(8, '0')}',
-            () => BoundColor(name, p!),
-          );
-        case rive.DataType.trigger:
-          final p = instance.trigger(name);
-          listen(name, p, (_) => 'fired', () => BoundTrigger(name, p!));
-        default:
-          // Lists, nested view models, images, artboards: not logged.
-          break;
+    void walk(rive.ViewModelInstance instance, String prefix, int depth) {
+      // Guards against a view model that (directly or indirectly) contains
+      // itself.
+      if (depth > 5) return;
+
+      for (final property in instance.properties) {
+        final path = '$prefix${property.name}';
+        switch (property.type) {
+          case rive.DataType.viewModel:
+            final nested = instance.viewModel(property.name);
+            if (nested != null) walk(nested, '$path/', depth + 1);
+          case rive.DataType.number:
+            final p = root.number(path);
+            listen(path, p, (v) => v.toStringAsFixed(2), () => BoundNumber(path, p!));
+          case rive.DataType.boolean:
+            final p = root.boolean(path);
+            listen(path, p, (v) => '$v', () => BoundBoolean(path, p!));
+          case rive.DataType.string:
+            final p = root.string(path);
+            listen(path, p, (v) => '"$v"', () => BoundString(path, p!));
+          case rive.DataType.enumType:
+            final p = root.enumerator(path);
+            listen(path, p, (v) => v, () => BoundEnum(path, p!));
+          case rive.DataType.color:
+            final p = root.color(path);
+            listen(
+              path,
+              p,
+              (v) => '#${v.toARGB32().toRadixString(16).padLeft(8, '0')}',
+              () => BoundColor(path, p!),
+            );
+          case rive.DataType.trigger:
+            final p = root.trigger(path);
+            listen(path, p, (_) => 'fired', () => BoundTrigger(path, p!));
+          default:
+            // Lists, images, artboards: not logged.
+            break;
+        }
       }
     }
+
+    walk(root, '', 0);
 
     final count = _boundProperties.length;
     _add(
@@ -288,7 +304,7 @@ class _AnimationDetailScreenState extends State<AnimationDetailScreen> {
                         ),
                         RiveControlsView(
                           properties: _boundProperties,
-                          numberRange: widget.item.numberRange,
+                          rangeFor: widget.item.rangeFor,
                           onChanged: () {},
                         ),
                       ],

@@ -51,12 +51,14 @@ class RiveControlsView extends StatefulWidget {
   const RiveControlsView({
     super.key,
     required this.properties,
-    required this.numberRange,
+    required this.rangeFor,
     required this.onChanged,
   });
 
   final List<BoundProperty> properties;
-  final ({double min, double max}) numberRange;
+
+  /// Slider bounds for a number property, looked up by its full path.
+  final ({double min, double max}) Function(String path) rangeFor;
 
   /// Called after a control writes to a property, so the host can rebuild.
   final VoidCallback onChanged;
@@ -108,21 +110,48 @@ class _RiveControlsViewState extends State<RiveControlsView> {
       );
     }
 
+    // Nested view models produce paths like `Slider/CurrentPos`; group the
+    // controls by that prefix and label each row with the leaf name.
+    final rows = <({String? header, BoundProperty? property})>[];
+    var group = '';
+    for (final property in widget.properties) {
+      final propertyGroup = _groupOf(property.name);
+      if (propertyGroup != group) {
+        group = propertyGroup;
+        if (group.isNotEmpty) rows.add((header: group, property: null));
+      }
+      rows.add((header: null, property: property));
+    }
+
     return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: widget.properties.length,
+      itemCount: rows.length,
       itemBuilder: (context, index) {
-        final bound = widget.properties[index];
+        final row = rows[index];
+        final header = row.header;
+        if (header != null) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Text(
+              header,
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          );
+        }
+        final bound = row.property!;
+        final label = _labelOf(bound.name);
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
           child: switch (bound) {
-            BoundNumber() => _numberControl(bound, theme),
-            BoundBoolean() => _booleanControl(bound),
-            BoundTrigger() => _triggerControl(bound),
-            BoundString() => _stringControl(bound),
-            BoundEnum() => _readOnly(bound.name, bound.property.value, theme),
+            BoundNumber() => _numberControl(bound, label, theme),
+            BoundBoolean() => _booleanControl(bound, label),
+            BoundTrigger() => _triggerControl(bound, label),
+            BoundString() => _stringControl(bound, label),
+            BoundEnum() => _readOnly(label, bound.property.value, theme),
             BoundColor() => _readOnly(
-              bound.name,
+              label,
               '#${bound.property.value.toARGB32().toRadixString(16).padLeft(8, '0')}',
               theme,
             ),
@@ -132,22 +161,30 @@ class _RiveControlsViewState extends State<RiveControlsView> {
     );
   }
 
-  Widget _numberControl(BoundNumber bound, ThemeData theme) {
-    final value = bound.property.value.clamp(
-      widget.numberRange.min,
-      widget.numberRange.max,
-    );
+  static String _groupOf(String path) {
+    final index = path.lastIndexOf('/');
+    return index < 0 ? '' : path.substring(0, index);
+  }
+
+  static String _labelOf(String path) {
+    final index = path.lastIndexOf('/');
+    return index < 0 ? path : path.substring(index + 1);
+  }
+
+  Widget _numberControl(BoundNumber bound, String label, ThemeData theme) {
+    final range = widget.rangeFor(bound.name);
+    final value = bound.property.value.clamp(range.min, range.max);
     return Row(
       children: [
         SizedBox(
           width: 110,
-          child: Text(bound.name, style: theme.textTheme.bodySmall),
+          child: Text(label, style: theme.textTheme.bodySmall),
         ),
         Expanded(
           child: Slider(
             value: value,
-            min: widget.numberRange.min,
-            max: widget.numberRange.max,
+            min: range.min,
+            max: range.max,
             onChanged: (next) => _write(() => bound.property.value = next),
           ),
         ),
@@ -165,17 +202,17 @@ class _RiveControlsViewState extends State<RiveControlsView> {
     );
   }
 
-  Widget _booleanControl(BoundBoolean bound) => SwitchListTile(
+  Widget _booleanControl(BoundBoolean bound, String label) => SwitchListTile(
     dense: true,
     contentPadding: EdgeInsets.zero,
-    title: Text(bound.name),
+    title: Text(label),
     value: bound.property.value,
     onChanged: (next) => _write(() => bound.property.value = next),
   );
 
-  Widget _triggerControl(BoundTrigger bound) => Row(
+  Widget _triggerControl(BoundTrigger bound, String label) => Row(
     children: [
-      Expanded(child: Text(bound.name)),
+      Expanded(child: Text(label)),
       FilledButton.tonal(
         onPressed: () => _write(bound.property.trigger),
         child: const Text('Fire'),
@@ -183,12 +220,12 @@ class _RiveControlsViewState extends State<RiveControlsView> {
     ],
   );
 
-  Widget _stringControl(BoundString bound) => Padding(
+  Widget _stringControl(BoundString bound, String label) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 4),
     child: TextField(
       controller: _textControllerFor(bound),
       decoration: InputDecoration(
-        labelText: bound.name,
+        labelText: label,
         isDense: true,
         border: const OutlineInputBorder(),
       ),

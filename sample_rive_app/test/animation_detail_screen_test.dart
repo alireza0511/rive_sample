@@ -81,4 +81,29 @@ void main() {
     expect(_visibleText(tester), contains('No data binding'));
     expect(find.text('Controls (0)'), findsOneWidget);
   });
+
+  testWidgets('walks nested view models in the UI Starter Kit', (tester) async {
+    final kit = riveAnimations.firstWhere((a) => a.title == 'UI Starter Kit');
+    await _pumpScreen(tester, kit);
+
+    // The root view model holds only nested components, so a flat pass would
+    // find nothing. All six components' leaf properties should be watched.
+    expect(_visibleText(tester), contains('Watching 25 bound properties'));
+    expect(find.text('Controls (25)'), findsOneWidget);
+
+    await tester.tap(find.textContaining('Controls'));
+    await _pumpFrames(tester);
+    // Controls are grouped by their path prefix and labelled with the leaf.
+    // "Button" matches both the group header and the Button/Text field value.
+    expect(find.text('Button'), findsWidgets);
+    expect(find.text('Hover'), findsOneWidget);
+    expect(find.text('Pressed'), findsOneWidget);
+
+    await tester.tap(find.text('Fire').first);
+    await _pumpFrames(tester);
+    await tester.tap(find.textContaining('Log ('));
+    await _pumpFrames(tester);
+    expect(_visibleText(tester), contains('Button/Pressed'));
+    expect(_visibleText(tester), contains('fired'));
+  });
 }
