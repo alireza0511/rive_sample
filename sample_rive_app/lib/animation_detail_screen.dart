@@ -4,6 +4,7 @@ import 'package:rive/rive.dart' as rive;
 import 'interaction_log.dart';
 import 'rive_animations.dart';
 import 'rive_controls.dart';
+import 'rive_values.dart';
 
 /// Newest entries are kept at index 0; older ones are dropped past this cap.
 const _maxLogEntries = 200;
@@ -235,17 +236,6 @@ class _AnimationDetailScreenState extends State<AnimationDetailScreen> {
     );
   }
 
-  void _logPointer(String label, Offset position, {bool coalesce = false}) {
-    _add(
-      LogKind.pointer,
-      label,
-      details:
-          'x: ${position.dx.toStringAsFixed(1)}, '
-          'y: ${position.dy.toStringAsFixed(1)}',
-      coalesceKey: coalesce ? 'pointer:$label' : null,
-    );
-  }
-
   Widget _buildAnimation() {
     if (_error != null) {
       return Center(
@@ -259,24 +249,13 @@ class _AnimationDetailScreenState extends State<AnimationDetailScreen> {
     if (controller == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    return Listener(
-      // Translucent so pointers are logged even when they miss an interactive
-      // part of the artboard; the Rive widget still receives them too.
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (event) => _logPointer('Pointer down', event.localPosition),
-      onPointerMove: (event) =>
-          _logPointer('Pointer move', event.localPosition, coalesce: true),
-      onPointerUp: (event) => _logPointer('Pointer up', event.localPosition),
-      onPointerCancel: (event) =>
-          _logPointer('Pointer cancel', event.localPosition),
-      child: rive.RiveWidget(controller: controller, fit: rive.Fit.contain),
-    );
+    return rive.RiveWidget(controller: controller, fit: rive.Fit.contain);
   }
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(title: Text(widget.item.title)),
         // Fixed flex split: the animation and the bottom panel each get a share
@@ -290,9 +269,13 @@ class _AnimationDetailScreenState extends State<AnimationDetailScreen> {
               child: Column(
                 children: [
                   TabBar(
+                    // Scrollable so three labels never overflow a narrow phone.
+                    isScrollable: true,
+                    tabAlignment: TabAlignment.center,
                     tabs: [
                       Tab(text: 'Log (${_log.length})'),
                       Tab(text: 'Controls (${_boundProperties.length})'),
+                      Tab(text: 'Values (${_boundProperties.length})'),
                     ],
                   ),
                   Expanded(
@@ -307,6 +290,7 @@ class _AnimationDetailScreenState extends State<AnimationDetailScreen> {
                           rangeFor: widget.item.rangeFor,
                           onChanged: () {},
                         ),
+                        RiveValuesView(properties: _boundProperties),
                       ],
                     ),
                   ),

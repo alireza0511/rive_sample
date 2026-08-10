@@ -1,8 +1,30 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rive/rive.dart' as rive;
 import 'package:sample_rive_app/animation_detail_screen.dart';
 import 'package:sample_rive_app/rive_animations.dart';
+import 'package:sample_rive_app/rive_values.dart';
+
+/// The UI Starter Kit's Demo artboard, and the artboard-space centres of two
+/// of its interactive components (found by sweeping `stateMachine.hitTest`).
+const _demoArtboard = Size(600, 400);
+const _buttonCentre = Offset(275, 183);
+const _dropdownCentre = Offset(400, 183);
+
+/// Maps a point in artboard space to screen space for a `Fit.contain` widget:
+/// the artboard is scaled uniformly and centred inside [widgetRect].
+Offset _artboardToScreen(Rect widgetRect, Size artboard, Offset point) {
+  final scale = math.min(
+    widgetRect.width / artboard.width,
+    widgetRect.height / artboard.height,
+  );
+  return Offset(
+    widgetRect.center.dx + (point.dx - artboard.width / 2) * scale,
+    widgetRect.center.dy + (point.dy - artboard.height / 2) * scale,
+  );
+}
 
 /// The Rive ticker never goes idle, so `pumpAndSettle` would time out.
 /// 30 frames ≈ 480ms, long enough to cover the 300ms tab transition.
@@ -105,5 +127,52 @@ void main() {
     await _pumpFrames(tester);
     expect(_visibleText(tester), contains('Button/Pressed'));
     expect(_visibleText(tester), contains('fired'));
+  });
+
+  group('UI Starter Kit — driven by pointer instead of controls', () {
+    /// Taps a point in artboard space on the rendered Rive widget.
+    Future<void> tapArtboard(WidgetTester tester, Offset point) async {
+      final rect = tester.getRect(find.byType(rive.RiveWidget));
+      await tester.tapAt(_artboardToScreen(rect, _demoArtboard, point));
+      await _pumpFrames(tester);
+    }
+
+    testWidgets('clicking the Button fires Button/Pressed', (tester) async {
+      final kit = riveAnimations.firstWhere((a) => a.title == 'UI Starter Kit');
+      await _pumpScreen(tester, kit);
+
+      await tapArtboard(tester, _buttonCentre);
+
+      final texts = _visibleText(tester);
+      expect(texts, contains('Button/Pressed'));
+      expect(texts, contains('fired'));
+    });
+
+    testWidgets('clicking the Dropdown opens it and the Values tab shows it', (
+      tester,
+    ) async {
+      final kit = riveAnimations.firstWhere((a) => a.title == 'UI Starter Kit');
+      await _pumpScreen(tester, kit);
+
+      await tapArtboard(tester, _dropdownCentre);
+      expect(_visibleText(tester), contains('Dropdown/Open'));
+
+      // The Values tab reads the same state back, with no control touched.
+      await tester.tap(find.textContaining('Values'));
+      await _pumpFrames(tester);
+      await tester.scrollUntilVisible(
+        find.text('Open'),
+        60,
+        scrollable: find.descendant(
+          of: find.byType(RiveValuesView),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await _pumpFrames(tester, 5);
+
+      // `Open` is unique to the Dropdown group, and reads back as true.
+      expect(find.text('Open'), findsOneWidget);
+      expect(find.text('true'), findsWidgets);
+    });
   });
 }

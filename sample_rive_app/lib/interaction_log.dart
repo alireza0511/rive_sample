@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
 
-enum LogKind { pointer, riveEvent, dataBind, info }
+enum LogKind { riveEvent, dataBind, info }
 
 Color _colorFor(LogKind kind, ColorScheme scheme) => switch (kind) {
-  LogKind.pointer => scheme.primary,
   LogKind.riveEvent => scheme.tertiary,
   LogKind.dataBind => scheme.secondary,
   LogKind.info => scheme.onSurfaceVariant,
 };
 
 IconData _iconFor(LogKind kind) => switch (kind) {
-  LogKind.pointer => Icons.touch_app_outlined,
   LogKind.riveEvent => Icons.bolt_outlined,
   LogKind.dataBind => Icons.tune_outlined,
   LogKind.info => Icons.info_outline,

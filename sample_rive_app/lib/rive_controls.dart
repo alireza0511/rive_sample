@@ -9,8 +9,52 @@ const defaultNumberRange = (min: 0.0, max: 100.0);
 /// A data-bound view model property, paired with the widget that can drive it.
 sealed class BoundProperty {
   const BoundProperty(this.name);
+
+  /// Full slash-separated path, e.g. `Slider/CurrentPos`.
   final String name;
 }
+
+/// The nested view model a property belongs to, or `''` when it sits at the
+/// root — `Slider/CurrentPos` → `Slider`.
+String propertyGroup(String path) {
+  final index = path.lastIndexOf('/');
+  return index < 0 ? '' : path.substring(0, index);
+}
+
+/// The property's leaf name — `Slider/CurrentPos` → `CurrentPos`.
+String propertyLabel(String path) {
+  final index = path.lastIndexOf('/');
+  return index < 0 ? path : path.substring(index + 1);
+}
+
+/// Splits [properties] into group headers and rows, in order.
+List<({String? header, BoundProperty? property})> groupProperties(
+  List<BoundProperty> properties,
+) {
+  final rows = <({String? header, BoundProperty? property})>[];
+  var group = '';
+  for (final property in properties) {
+    final next = propertyGroup(property.name);
+    if (next != group) {
+      group = next;
+      if (group.isNotEmpty) rows.add((header: group, property: null));
+    }
+    rows.add((header: null, property: property));
+  }
+  return rows;
+}
+
+/// Current value of [bound], formatted for display.
+String describeValue(BoundProperty bound) => switch (bound) {
+  BoundNumber() => bound.property.value.toStringAsFixed(2),
+  BoundBoolean() => '${bound.property.value}',
+  BoundString() => '"${bound.property.value}"',
+  BoundEnum() => bound.property.value,
+  BoundColor() =>
+    '#${bound.property.value.toARGB32().toRadixString(16).padLeft(8, '0')}',
+  // Triggers are momentary: they carry no readable state.
+  BoundTrigger() => '—',
+};
 
 class BoundNumber extends BoundProperty {
   const BoundNumber(super.name, this.property);
@@ -112,16 +156,7 @@ class _RiveControlsViewState extends State<RiveControlsView> {
 
     // Nested view models produce paths like `Slider/CurrentPos`; group the
     // controls by that prefix and label each row with the leaf name.
-    final rows = <({String? header, BoundProperty? property})>[];
-    var group = '';
-    for (final property in widget.properties) {
-      final propertyGroup = _groupOf(property.name);
-      if (propertyGroup != group) {
-        group = propertyGroup;
-        if (group.isNotEmpty) rows.add((header: group, property: null));
-      }
-      rows.add((header: null, property: property));
-    }
+    final rows = groupProperties(widget.properties);
 
     return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -141,7 +176,7 @@ class _RiveControlsViewState extends State<RiveControlsView> {
           );
         }
         final bound = row.property!;
-        final label = _labelOf(bound.name);
+        final label = propertyLabel(bound.name);
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
           child: switch (bound) {
@@ -161,15 +196,6 @@ class _RiveControlsViewState extends State<RiveControlsView> {
     );
   }
 
-  static String _groupOf(String path) {
-    final index = path.lastIndexOf('/');
-    return index < 0 ? '' : path.substring(0, index);
-  }
-
-  static String _labelOf(String path) {
-    final index = path.lastIndexOf('/');
-    return index < 0 ? path : path.substring(index + 1);
-  }
 
   Widget _numberControl(BoundNumber bound, String label, ThemeData theme) {
     final range = widget.rangeFor(bound.name);
